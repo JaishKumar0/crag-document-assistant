@@ -1,0 +1,14 @@
+# --- uv default generated files ---
+.venv
+__pycache__/
+*.pyc
+
+# --- CRITICAL RAG PROJECT SECRETS & DATA ---
+.env
+memory.db
+memory.db-wal
+uploads/
+vectorstores/
+
+# --- OS generated files ---
+.DS_Store
