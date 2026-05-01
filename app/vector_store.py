@@ -28,7 +28,7 @@ def create_or_load_vs(file_id, file_path=None):
             allow_dangerous_deserialization=True
         )
 
-    # FIX: if vector store doesn't exist and no file_path given, raise clearly
+   
     if file_path is None:
         raise FileNotFoundError(f"No vector store found for file_id='{file_id}' and no file_path provided.")
 

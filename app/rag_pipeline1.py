@@ -13,14 +13,10 @@ from app.vector_store import create_or_load_vs
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-# -----------------------------
-# Configuration, LLM & Retriever
-# -----------------------------
-# NOTE: Define your retriever globally here so it isn't passed into the State.
-# retriever = your_faiss_vector_store.as_retriever(...)
+
 
 llm = ChatOpenAI(
-    model="gpt-4o-mini",  # You can also use "gpt-4o" if your GitHub tier supports it
+    model="gpt-4o-mini",  
     api_key=GITHUB_TOKEN,
     base_url=GITHUB_BASE_URL,
     max_retries=5
@@ -31,13 +27,9 @@ tavily = TavilySearchResults(max_results=5)
 UPPER_TH = 0.7
 LOWER_TH = 0.3
 
-# -----------------------------
-# State
-# -----------------------------
-# Removed 'retriever' from State to prevent SQLite serialization crashes
 class State(TypedDict, total=False):
     question: str
-    file_id: str # <-- Replaced 'retriever' with 'file_id'
+    file_id: str 
     
     docs: List[Document]
     good_docs: List[Document]
@@ -50,22 +42,19 @@ class State(TypedDict, total=False):
     web_docs: List[Document]
     answer: str
     messages: Annotated[List[str], operator.add]
-# -----------------------------
-# Nodes & Chains
-# -----------------------------
+
 
 def retrieve_node(state: State):
     q = state['question']
     file_id = state['file_id']
     
-    # Load the vector store dynamically for the specific file
+   
     vs = create_or_load_vs(file_id)
     retriever = vs.as_retriever(search_kwargs={"k": 4})
     
     result = retriever.invoke(q) 
     return {'docs': result}
 
-# 1. Evaluate Docs Node
 class evalDocsScore(BaseModel):
     score: float
     reason: str
@@ -144,7 +133,6 @@ def refine_node(state: State):
     refined_context = "\n".join(kept).strip()
     return {"strips": strips, "kept_strips": kept, "refined_context": refined_context}
 
-# 3. Rewrite & Web Search Nodes
 class WebQuery(BaseModel):
     query: str
 
@@ -178,7 +166,7 @@ def web_search_node(state: State):
         
     return {"web_docs": web_docs}
 
-# 4. Generate Node
+
 answer_prompt = ChatPromptTemplate.from_messages([
     ("system", 
      "You are a helpful ML tutor. Answer ONLY using the provided context.\n"
@@ -188,7 +176,7 @@ answer_prompt = ChatPromptTemplate.from_messages([
 ])
 
 def generate_node(state: State):
-    history = "\n".join(state.get("messages", [])[-5:]) # Pull last 5 turns from memory
+    history = "\n".join(state.get("messages", [])[-5:]) 
     
     out = (answer_prompt | llm).invoke({
         "question": state["question"], 
@@ -204,18 +192,12 @@ def generate_node(state: State):
         ]
     }
 
-# -----------------------------
-# Graph Routing Logic
-# -----------------------------
 def route_after_eval(state: State) -> str:
     if state.get("verdict") == "CORRECT":
         return "refine"
     else:
         return "rewrite_query"
 
-# -----------------------------
-# Graph Build
-# -----------------------------
 g = StateGraph(State)
 
 g.add_node("retrieve", retrieve_node)
@@ -242,7 +224,6 @@ g.add_edge("web_search", "refine")
 g.add_edge("refine", "generate")
 g.add_edge("generate", END)
 
-# Persistent Memory Initialization setup using sqlite3 connection
 conn = sqlite3.connect("memory.db", check_same_thread=False)
 memory = SqliteSaver(conn)
 

@@ -13,10 +13,9 @@ from app.vector_store import create_or_load_vs
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-# -----------------------------
-# Configuration & LLM
-# -----------------------------
-# Using GitHub Models to share quota with embeddings and avoid versioning errors
+
+# llm 
+
 llm = ChatOpenAI(
     model="gpt-4o-mini",  
     api_key=GITHUB_TOKEN,
@@ -29,9 +28,7 @@ tavily = TavilySearchResults(max_results=5)
 UPPER_TH = 0.7
 LOWER_TH = 0.3
 
-# -----------------------------
-# State
-# -----------------------------
+# state
 class State(TypedDict, total=False):
     question: str
     file_id: str
@@ -48,22 +45,21 @@ class State(TypedDict, total=False):
     answer: str
     messages: Annotated[List[str], operator.add]
 
-# -----------------------------
-# Nodes & Chains
-# -----------------------------
+
+# Node 
 
 def retrieve_node(state: State):
     q = state['question']
     file_id = state['file_id']
     
-    # Load the vector store dynamically for the specific file
+    
     vs = create_or_load_vs(file_id)
     retriever = vs.as_retriever(search_kwargs={"k": 4})
     
     result = retriever.invoke(q) 
     return {'docs': result}
 
-# 1. Evaluate Docs Node
+
 class evalDocsScore(BaseModel):
     score: float
     reason: str
@@ -101,7 +97,9 @@ def eval_docs_node(state: State):
         
     return {'good_docs': good, 'verdict': 'AMBIGUOUS', 'reason': f'No chunks score > {UPPER_TH}, but not all score < {LOWER_TH}.'}
 
-# 2. Refine Node
+# Refine Node
+
+
 def refine_node(state: State):
     verdict = state.get("verdict")
     
@@ -112,12 +110,12 @@ def refine_node(state: State):
     else:  # AMBIGUOUS
         docs_to_use = state.get("good_docs", []) + state.get("web_docs", [])
 
-    # FIX: Merging documents directly instead of looping sentence-by-sentence to avoid 429 Rate Limits
+    
     refined_context = "\n\n".join(d.page_content for d in docs_to_use).strip()
 
     return {"refined_context": refined_context}
 
-# 3. Rewrite & Web Search Nodes
+#  Rewrite & Web Search Nodes
 class WebQuery(BaseModel):
     query: str
 
@@ -151,7 +149,6 @@ def web_search_node(state: State):
         
     return {"web_docs": web_docs}
 
-# 4. Generate Node
 answer_prompt = ChatPromptTemplate.from_messages([
     ("system", 
      "You are a helpful ML tutor. Answer ONLY using the provided context.\n"
@@ -177,18 +174,17 @@ def generate_node(state: State):
         ]
     }
 
-# -----------------------------
-# Graph Routing Logic
-# -----------------------------
+# Logic 
+
 def route_after_eval(state: State) -> str:
     if state.get("verdict") == "CORRECT":
         return "refine"
     else:
         return "rewrite_query"
 
-# -----------------------------
-# Graph Build
-# -----------------------------
+
+# graph
+
 g = StateGraph(State)
 
 g.add_node("retrieve", retrieve_node)
@@ -215,7 +211,7 @@ g.add_edge("web_search", "refine")
 g.add_edge("refine", "generate")
 g.add_edge("generate", END)
 
-# Persistent Memory Initialization setup using sqlite3 connection
+
 conn = sqlite3.connect("memory.db", check_same_thread=False)
 memory = SqliteSaver(conn)
 

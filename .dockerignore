@@ -1,0 +1,8 @@
+.env
+.venv
+__pycache__/
+memory.db
+memory.db-wal
+uploads/
+vectorstores/
+.DS_Store
